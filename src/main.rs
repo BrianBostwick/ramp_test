@@ -63,7 +63,7 @@ fn main() {
         "update_comp",
         &[],
     );
-    
+
     let mut sim = sim_builder.build();
 
     let frames = vec![
@@ -100,32 +100,30 @@ fn main() {
 
 
     // Create a single test atom
-    let atom_number = 25;
-    for _ in 0..atom_number {
-        sim.world
-            .create_entity()
-            .with(Atom)
-            .with(Mass { value: 87.0 })
-            .with(Force::new())
-            .with(Position {
-                pos: Vector3::new(
-                    50e-6),
-                    50e-6),
-                    50e-6),
-                ),
-            })
-            .with(Velocity {
-                vel: Vector3::new(
-                    0.0,
-                    0.0,
-                    0.0,
-                ),
-            })
-            .with(dipole::Polarizability::calculate_for(
-                wavelength, 461e-9, 32.0e6,
+    sim.world
+        .create_entity()
+        .with(Atom)
+        .with(Mass { value: 87.0 })
+        .with(Force::new())
+        .with(Position {
+            pos: Vector3::new(
+                50e-7),
+                50e-7),
+                50e-7),
+            ),
+        })
+        .with(Velocity {
+            vel: Vector3::new(
+                0.0,
+                0.0,
+                0.0,
+            ),
+        })
+        .with(dipole::Polarizability::calculate_for(
+            wavelength, 461e-9, 32.0e6,
             ))
-            .with(lib::initiate::NewlyCreated)
-            .build();
+        .with(lib::initiate::NewlyCreated)
+        .build();
     }
 
 
