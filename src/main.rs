@@ -19,7 +19,7 @@ use lib::laser::intensity::{LaserIntensitySamplers};
 
 use lib::ramp::{Ramp, RampUpdateSystem};
 
-const BEAM_NUMBER: usize = 1;
+const BEAM_NUMBER: usize = 2;
 
 fn main() {
 
