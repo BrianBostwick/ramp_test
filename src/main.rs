@@ -1,90 +1,103 @@
-//! Single particle in a cross beam optical dipole trap
+
 extern crate atomecs as lib;
-extern crate nalgebra;
+
 use lib::atom::{Atom, Force, Mass, Position, Velocity};
-use lib::dipole::{self, DipolePlugin};
+
 use lib::integrator::Timestep;
-use lib::laser::{self, LaserPlugin};
-use lib::laser::gaussian::GaussianBeam;
-use lib::laser::intensity::{LaserIntensitySamplers};
-use lib::output::file::{FileOutputPlugin, Text, XYZ};
-use lib::simulation::SimulationBuilder;
+use lib::output::file::{FileOutputPlugin, Text};
+use lib::simulation::{SimulationBuilder};
 use nalgebra::Vector3;
 use specs::prelude::*;
 use std::time::Instant;
-use rand_distr::{Distribution, Normal};
 use lib::initiate::NewlyCreated;
-use std::fs::File;
-use std::io::{Error, Write};
-use lib::collisions::{CollisionPlugin, ApplyCollisionsOption, CollisionParameters, CollisionsTracker};
-use lib::sim_region::{ SimulationVolume, VolumeType};
-use lib::shapes::Sphere;
 
-use lib::ramp::{Lerp, Ramp, RampUpdateSystem};
+use lib::laser::{self, LaserPlugin};
+use lib::laser::gaussian::GaussianBeam;
+use lib::dipole::{self, DipolePlugin};
 
-use specs::{Component, HashMapStorage};
+use lib::laser::intensity::{LaserIntensitySamplers};
 
-const BEAM_NUMBER: usize = 2;
+use lib::ramp::{Ramp, RampUpdateSystem};
+
+const BEAM_NUMBER: usize = 1;
 
 fn main() {
+
     let now = Instant::now();
-
-    // Create dipole laser.
-    // let mut power = 7.0;
-    let e_radius = 60.0e-6 / 2.0_f64.sqrt();
-    let wavelength = 1064.0e-9;
-
-
-    let gaussian_beam_one = GaussianBeam {
-        intersection: Vector3::new(0.0, 0.0, 0.0),
-        e_radius,
-        power: 7.0,
-        direction: Vector3::x(),
-        rayleigh_range: crate::laser::gaussian::calculate_rayleigh_range(&wavelength, &e_radius),
-        ellipticity: 0.0,
-    };
 
     // Configure simulation output.
     let mut sim_builder = SimulationBuilder::default();
 
     sim_builder.world.register::<NewlyCreated>();
-    // sim_builder.world.register::<RampUpdateSystem>();
 
     sim_builder.add_plugin(LaserPlugin::<{BEAM_NUMBER}>);
     sim_builder.add_plugin(DipolePlugin::<{BEAM_NUMBER}>);
 
+    sim_builder.add_plugin(FileOutputPlugin::<Position, Text, Atom>::new("D:/data_1/pos_test.txt".to_string(), 1));
+    sim_builder.add_plugin(FileOutputPlugin::<Velocity, Text, Atom>::new("D:/data_1/vel_test.txt".to_string(), 1));
+    sim_builder.add_plugin(FileOutputPlugin::<
+                LaserIntensitySamplers<{BEAM_NUMBER}>,
+                Text,
+                LaserIntensitySamplers<{BEAM_NUMBER}>>::new("D:/data_1/intensity_test.txt".to_string(),
+            1
+        )
+    );
 
-    sim_builder.add_plugin(FileOutputPlugin::<Position, Text, Atom>::new("D:/data_1/pos_test.txt".to_string(), 100));
-    sim_builder.add_plugin(FileOutputPlugin::<Velocity, Text, Atom>::new("D:/data_1/vel_test.txt".to_string(), 100));
-    sim_builder.add_plugin(FileOutputPlugin::<LaserIntensitySamplers<{BEAM_NUMBER}>, Text, LaserIntensitySamplers<{BEAM_NUMBER}>>::new("D:/data_1/intensity_test.txt".to_string(), 100));
-
-    sim_builder.dispatcher_builder.with(
+    // Must use .add() to add the ramp update system to the dispatcher
+    sim_builder.dispatcher_builder.add(
         RampUpdateSystem::<GaussianBeam>::default(),
         "update_comp",
         &[],
     );
 
-    let mut sim = sim_builder.build();
 
-    let frames = vec![
-        (0.0, GaussianBeam { intersection: Vector3::new(0.0, 0.0, 0.0),
-        e_radius,
+    let mut sim = sim_builder.build();
+                              //units
+    let wavelength = 1064e-9; //m
+    let e_radius   = 50.0e-6; //m
+    let dt         = 1.0e-6;  //s
+    let sim_length = 200;     //none
+    let initial_power = 7.0;  //W
+    let final_power   = 0.0;  //W
+    let rate       = 1.0e7;   //W/s
+
+
+    // Creating a mutable frames vector for the ramp
+    let mut frames = vec![];
+
+    // Appending the ramp powers for each frame to the vector, this in the form of a paired list (time, componant value)
+    for i in 0..sim_length {
+        frames.append(
+            &mut vec![
+                (
+                    i as f64 * dt,
+                    GaussianBeam {
+                        intersection: Vector3::new(0.0, 0.0, 0.0),
+                        e_radius:  e_radius,
+                        // This is a exponetial ramp down of the power
+                        power: ( initial_power - final_power ) * 2.0_f64.powf( -1.0 * rate * i as f64 * dt ) + final_power,
+                        direction: Vector3::x(),
+                        rayleigh_range: crate::laser::gaussian::calculate_rayleigh_range(&wavelength, &e_radius),
+                        ellipticity: 0.0
+                    }
+                )
+            ]
+        )
+    }
+
+    let ramp = Ramp{
+        prev: 0,
+        keyframes: frames,
+    };
+
+
+    let gaussian_beam = GaussianBeam {
+        intersection: Vector3::new(0.0, 0.0, 0.0),
+        e_radius:  e_radius,
         power: 7.0,
         direction: Vector3::x(),
         rayleigh_range: crate::laser::gaussian::calculate_rayleigh_range(&wavelength, &e_radius),
-        ellipticity: 0.0 }),
-        (1.0, GaussianBeam { intersection: Vector3::new(0.0, 0.0, 0.0),
-        e_radius,
-        power: 0.0,
-        direction: Vector3::x(),
-        rayleigh_range: crate::laser::gaussian::calculate_rayleigh_range(&wavelength, &e_radius),
-        ellipticity: 0.0 }
-        )
-        ];
-
-    let ramp = Ramp {
-        prev: 0,
-        keyframes: frames,
+        ellipticity: 0.0,
     };
 
     sim.world
@@ -95,9 +108,8 @@ fn main() {
             x_vector: Vector3::y(),
             y_vector: Vector3::z(),
         })
-        .with(ramp)
+        .with(ramp) // Adding the rmap to the gassian beam entity
         .build();
-
 
     // Create a single test atom
     sim.world
@@ -107,9 +119,9 @@ fn main() {
         .with(Force::new())
         .with(Position {
             pos: Vector3::new(
-                50e-7),
-                50e-7),
-                50e-7),
+                50e-7,
+                50e-7,
+                50e-7,
             ),
         })
         .with(Velocity {
@@ -119,19 +131,15 @@ fn main() {
                 0.0,
             ),
         })
-        .with(dipole::Polarizability::calculate_for(
-            wavelength, 461e-9, 32.0e6,
-            ))
+
         .with(lib::initiate::NewlyCreated)
         .build();
-    }
-
 
     // Define timestep
-    sim.world.insert(Timestep { delta: 1.0e-6 });
+    sim.world.insert(Timestep { delta: dt});
 
     // Run the simulation for a number of steps.
-    for _i in 0..500 {
+    for _i in 0..sim_length {
         sim.step();
     }
     println!("Simulation completed in {} ms.", now.elapsed().as_millis());
